@@ -1,21 +1,32 @@
-import axios from 'axios'
+import { api, setAuthToken } from '@/utils/api'
 import { getSavedState, saveState } from '@/utils/local-storage'
 export const state = {
   currentUser: getSavedState('auth.currentUser'),
+  token: getSavedState('auth.token'),
+  user: getSavedState('auth.user'),
+  impersonate: false,
 }
 
 export const mutations = {
+  SET_AUTH_TOKEN(state, newValue) {
+    state.token = newValue
+    saveState('auth.token', newValue)
+    setDefaultAuthHeaders(state)
+  },
+  SET_AUTH_USER(state, newValue) {
+    state.user = newValue
+    saveState('auth.user', newValue)
+  },
   SET_CURRENT_USER(state, newValue) {
     state.currentUser = newValue
     saveState('auth.currentUser', newValue)
-    setDefaultAuthHeaders(state)
   },
 }
 
 export const getters = {
   // Whether the user is currently logged in.
   loggedIn(state) {
-    return !!state.currentUser
+    return !!state.token
   },
 }
 
@@ -28,37 +39,82 @@ export const actions = {
   },
 
   // Logs in the current user.
-  logIn({ commit, dispatch, getters }, { username, password } = {}) {
+  logIn({ commit, dispatch, getters }, { email, password } = {}) {
     if (getters.loggedIn) return dispatch('validate')
 
-    return axios
-      .post('/api/session', { username, password })
-      .then((response) => {
-        const user = response.data
-        commit('SET_CURRENT_USER', user)
-        return user
+    return api
+      .post('/auth/login', { email, password })
+      .then(response => {
+        const token = response.data
+        commit('SET_AUTH_TOKEN', token)
+        // dispatch('setUser', token)
+        return token
       })
   },
 
   // Logs out the current user.
-  logOut({ commit }) {
-    commit('SET_CURRENT_USER', null)
+  logOut({ commit, state }) {
+    if (!state.impersonate){
+      commit('SET_AUTH_TOKEN', null)
+      commit('SET_AUTH_USER', null)
+      commit('SET_CURRENT_USER', null)
+    } else {
+      commit('SET_CURRENT_USER', state.user)
+    }
   },
 
   // Validates the current user's token and refreshes it
   // with new data from the API.
   validate({ commit, state }) {
-    if (!state.currentUser) return Promise.resolve(null)
-
-    return axios
-      .get('/api/session')
-      .then((response) => {
+    if (!state.token) return Promise.resolve(null)
+    return api
+      .get('/auth/user')
+      .then(response => {
         const user = response.data
         commit('SET_CURRENT_USER', user)
         return user
       })
       .catch((error) => {
         if (error.response && error.response.status === 401) {
+          commit('SET_CURRENT_USER', null)
+        } else {
+          console.warn(error)
+        }
+        return null
+      })
+  },
+  impersonate({ commit }) {
+    // send off for user details
+    return api
+      .get('/api/auth/user')
+      .then(response => {
+        const user = response.data
+        commit('SET_CURRENT_USER', user)
+        return user
+      })
+      .catch((error) => {
+        if (error.response && error.response.status === 401) {
+          commit('SET_CURRENT_USER', null)
+        } else {
+          console.warn(error)
+        }
+        return null
+      })
+  },
+  setUser({ commit, state }, { token }) {
+    let access_token = token ? token : state.token.access_token
+    return api
+      .get('/api/auth/user', { headers: { 'Authorization': 'Bearer ' + access_token } })
+      .then(response => {
+        const user = response.data
+        commit('SET_AUTH_USER', user)
+        commit('SET_CURRENT_USER', user)
+        return user
+      })
+      .catch(error => {
+        if (error.response && error.response.status === 401) {
+          commit('SET_AUTH_TOKEN', null)
+          commit('SET_AUTH_USER', null)
           commit('SET_CURRENT_USER', null)
         } else {
           console.warn(error)
@@ -73,7 +129,5 @@ export const actions = {
 // ===
 
 function setDefaultAuthHeaders (state) {
-  axios.defaults.headers.common.Authorization = state.currentUser
-    ? state.currentUser.token
-    : '';
+  setAuthToken(state.token.access_token)
 }

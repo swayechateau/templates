@@ -8,8 +8,8 @@ import 'sweetalert2/dist/sweetalert2.min.css'
 
 import '@/components/_globals'
  
-let axiosDefaults = require('axios/lib/defaults');
-axiosDefaults.baseURL = 'http://swayechateau.com';
+import axios from 'axios'
+axios.defaults.baseURL = 'http://swaye.test/api';
 
 Vue.use(VueSweetalert2);
 // Don't warn about using the dev version of Vue in development.

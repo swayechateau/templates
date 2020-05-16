@@ -36,7 +36,7 @@ export default {
       // Reset the authError if it existed.
       this.authError = null
       return this.logIn({
-        username: this.username,
+        email: this.username,
         password: this.password,
       })
         .then(token => {
